@@ -27,8 +27,7 @@ const HomeScreen: React.FC = () => {
     <View style={styles.container}>
       {/* Header */}
       <Header
-        title="Main Bedroom"
-        subtitle="SMART CONTROLLER • ACTIVE"
+        title="Control your Lights"
       />
 
       {/* Main Content Area */}

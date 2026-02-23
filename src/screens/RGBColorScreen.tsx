@@ -131,7 +131,7 @@ const RGBColorScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.safeArea} edges={['bottom']}>
+    <SafeAreaView style={styles.safeArea}>
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.contentContainer}>
@@ -158,9 +158,9 @@ const RGBColorScreen: React.FC = () => {
         </View>
 
         {/* SOLID COLORS Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>SOLID COLORS</Text>
+        <View style={styles.solid}>
+          <View style={styles.solidHeader}>
+            <Text style={styles.solidTitle}>SOLID COLORS</Text>
             <TouchableOpacity>
               <Text style={styles.viewAllText}>View All</Text>
             </TouchableOpacity>
@@ -212,8 +212,8 @@ const RGBColorScreen: React.FC = () => {
           </Text>
         </View>
 
-        {/* ON/OFF Button */}
-        <TouchableOpacity
+        {/* ON/OFF Button - Commented out */}
+        {/* <TouchableOpacity
           style={[
             styles.button,
             isOn ? styles.buttonOn : styles.buttonOff,
@@ -223,12 +223,12 @@ const RGBColorScreen: React.FC = () => {
           activeOpacity={0.8}
           disabled={!isConnected}>
           <Text style={styles.buttonText}>{isOn ? 'ON' : 'OFF'}</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
 
-        {/* Status Text */}
-        <Text style={styles.statusLabel}>
+        {/* Status Text - Commented out */}
+        {/* <Text style={styles.statusLabel}>
           Status: {isOn ? 'Active' : 'Inactive'}
-        </Text>
+        </Text> */}
 
         {/* Revert Button */}
         {/* <TouchableOpacity
@@ -257,11 +257,11 @@ const styles = StyleSheet.create({
   },
   contentContainer: {
     paddingHorizontal: rw(24),
-    paddingTop: rh(20),
-    paddingBottom: rh(40),
+    // paddingTop: rh(20),
+    // paddingBottom: rh(40),
   },
   section: {
-    marginBottom: rh(32),
+    marginBottom: rh(10),
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -275,6 +275,22 @@ const styles = StyleSheet.create({
     color: '#a0a0a0',
     textTransform: 'uppercase',
     letterSpacing: 1,
+  },
+  solidHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: rh(16),
+  },
+  solidTitle: {
+    fontSize: rh(14),
+    fontWeight: '600',
+    color: '#a0a0a0',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  solid: {
+    marginBottom: rh(5),
   },
   viewAllText: {
     fontSize: rh(14),
@@ -292,11 +308,6 @@ const styles = StyleSheet.create({
     borderRadius: rw(25),
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
   },
   checkmark: {
     fontSize: rh(24),
@@ -308,7 +319,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: rh(20),
-    paddingVertical: rh(16),
+    paddingVertical: rh(5),
     paddingHorizontal: rw(20),
     backgroundColor: '#2d2d44',
     borderRadius: rw(12),
@@ -344,29 +355,29 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
   },
-  button: {
-    width: rw(200),
-    height: rh(200),
-    borderRadius: rw(100),
-    justifyContent: 'center',
-    alignItems: 'center',
-    alignSelf: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 4},
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    marginBottom: rh(16),
-  },
-  buttonOn: {
-    backgroundColor: '#4CAF50',
-  },
-  buttonOff: {
-    backgroundColor: '#f44336',
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
+  // button: {
+  //   width: rw(200),
+  //   height: rh(200),
+  //   borderRadius: rw(100),
+  //   justifyContent: 'center',
+  //   alignItems: 'center',
+  //   alignSelf: 'center',
+  //   elevation: 8,
+  //   shadowColor: '#000',
+  //   shadowOffset: {width: 0, height: 4},
+  //   shadowOpacity: 0.3,
+  //   shadowRadius: 5,
+  //   marginBottom: rh(16),
+  // },
+  // buttonOn: {
+  //   backgroundColor: '#4CAF50',
+  // },
+  // buttonOff: {
+  //   backgroundColor: '#f44336',
+  // },
+  // buttonDisabled: {
+  //   opacity: 0.5,
+  // },
   buttonText: {
     fontSize: rh(48),
     fontWeight: 'bold',
@@ -380,24 +391,24 @@ const styles = StyleSheet.create({
   colorPickerContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: rh(20),
+    // paddingVertical: rh(20),
     backgroundColor: '#2d2d44',
     borderRadius: rw(12),
-    minHeight: rh(300),
+    minHeight: rh(250),
   },
-  revertButton: {
-    marginTop: rh(24),
-    paddingVertical: rh(12),
-    paddingHorizontal: rw(24),
-    backgroundColor: '#3498db',
-    borderRadius: rw(8),
-    alignSelf: 'center',
-  },
-  revertButtonText: {
-    fontSize: rh(16),
-    fontWeight: '600',
-    color: '#ffffff',
-  },
+  // revertButton: {
+  //   marginTop: rh(24),
+  //   paddingVertical: rh(12),
+  //   paddingHorizontal: rw(24),
+  //   backgroundColor: '#3498db',
+  //   borderRadius: rw(8),
+  //   alignSelf: 'center',
+  // },
+  // revertButtonText: {
+  //   fontSize: rh(16),
+  //   fontWeight: '600',
+  //   color: '#ffffff',
+  // },
 });
 
 export default RGBColorScreen;
