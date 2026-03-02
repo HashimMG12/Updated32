@@ -88,6 +88,50 @@ export async function sendColorWhite(): Promise<boolean> {
   return sendCommand('/white');
 }
 
+// ============ MODE COMMANDS ============
+export type EspMode =
+  | 'manual'
+  | 'disco'
+  | 'rock'
+  | 'heartbeat'
+  | 'techno'
+  | 'waltz'
+  | 'reggae'
+  | 'police'
+  | 'rainbow'
+  | 'strobe'
+  | 'fire'
+  | 'christmas'
+  | 'party'
+  | 'fade'
+  | 'pulse'
+  | 'colorcycle'
+  | 'random';
+
+export async function setMode(mode: EspMode): Promise<boolean> {
+  try {
+    const url = buildUrl(`/setmode?mode=${mode}`);
+    console.log('Setting ESP32 mode:', url);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      timeout: 5000,
+    } as RequestInit);
+
+    if (response.ok) {
+      const text = await response.text();
+      console.log('Mode response:', text);
+      return true;
+    }
+
+    console.log('Mode command failed:', response.status);
+    return false;
+  } catch (error) {
+    console.log('Set mode error:', error);
+    return false;
+  }
+}
+
 // ============ SEND COLOR BY RGB ============
 export async function sendColorRGB(r: number, g: number, b: number): Promise<boolean> {
   try {

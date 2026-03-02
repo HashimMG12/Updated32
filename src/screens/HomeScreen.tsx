@@ -3,7 +3,7 @@ import {View, StyleSheet} from 'react-native';
 import BottomNavigation, {TabType} from '../components/BottomNavigation';
 import Header from '../components/Header';
 import RGBColorScreen from './RGBColorScreen';
-import ColorScreen from './ColorScreen';
+import Effects from './Effects';
 import MusicScreen from './MusicScreen';
 import CameraScreen from './CameraScreen';
 
@@ -15,7 +15,7 @@ const HomeScreen: React.FC = () => {
       case 'rgb':
         return <RGBColorScreen />;
       case 'color':
-        return <ColorScreen />;
+        return <Effects />;
       case 'music':
         return <MusicScreen />;
       case 'camera':

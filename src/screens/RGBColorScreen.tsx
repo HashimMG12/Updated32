@@ -9,6 +9,7 @@ import {
   checkConnection,
   getStatus,
   sendColorByHex,
+  setMode,
 } from '../HttpService';
 
 const RGBColorScreen: React.FC = () => {
@@ -37,7 +38,18 @@ const RGBColorScreen: React.FC = () => {
     if (connected) {
       const status = await getStatus();
       if (status) {
-        setIsOn(status.toUpperCase().includes('ON'));
+        try {
+          // New firmware returns JSON status
+          const parsed = JSON.parse(status);
+          if (parsed && typeof parsed.state === 'string') {
+            setIsOn(parsed.state.toUpperCase().includes('ON'));
+          } else {
+            setIsOn(status.toUpperCase().includes('ON'));
+          }
+        } catch {
+          // Backwards compatibility if status is plain text
+          setIsOn(status.toUpperCase().includes('ON'));
+        }
       }
     }
     setIsCheckingConnection(false);
@@ -45,6 +57,13 @@ const RGBColorScreen: React.FC = () => {
     if (isInitialMount.current) {
       isInitialMount.current = false;
     }
+  };
+
+  const ensureManualMode = async (): Promise<boolean> => {
+    if (!isConnected || isCheckingConnection) {
+      return false;
+    }
+    return setMode('manual');
   };
 
   const handlePress = async () => {
@@ -68,16 +87,24 @@ const RGBColorScreen: React.FC = () => {
 
   const solidColors = [
     {name: 'Red', hex: '#FF0000'},
-    {name: 'Orange', hex: '#FF8C00'},
-    {name: 'Yellow', hex: '#FFD700'},
     {name: 'Green', hex: '#00FF00'},
-    {name: 'Blue', hex: '#3498db'},
-    {name: 'Purple', hex: '#9B59B6'},
+    {name: 'Blue', hex: '#0000FF'},
+    {name: 'Yellow', hex: '#FFFF00'},
+    {name: 'Pink', hex: '#FF00FF'},
+    {name: 'Cyan', hex: '#00FFFF'},
+    {name: 'White', hex: '#FFFFFF'},
+    {name: 'Orange', hex: '#FF8800'},
   ];
 
   const handleColorSelect = async (hex: string) => {
     if (isCheckingConnection || !isConnected) {
       return; // Silently return if not connected
+    }
+
+    // Switch to manual mode before sending color, so effects don't override it
+    const manualOk = await ensureManualMode();
+    if (!manualOk) {
+      return;
     }
 
     setSelectedColor(hex);
@@ -113,6 +140,12 @@ const RGBColorScreen: React.FC = () => {
       }
       lastAlertTime.current = now;
       Alert.alert('Error', 'Not connected to ESP32');
+      return;
+    }
+
+    // Switch to manual mode before sending color, so effects don't override it
+    const manualOk = await ensureManualMode();
+    if (!manualOk) {
       return;
     }
 
@@ -299,6 +332,7 @@ const styles = StyleSheet.create({
   },
   colorSwatches: {
     flexDirection: 'row',
+    flexWrap: 'nowrap',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
