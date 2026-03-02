@@ -10,56 +10,24 @@ export interface Esp32Device {
 const STORAGE_KEY = '@esp32_devices';
 const SELECTED_DEVICE_KEY = '@esp32_selected_device';
 
+// Default ESP32 hotspot IP (no network scan - fast connection)
+const DEFAULT_ESP32_IP = '192.168.4.1';
+
 // ============ DISCOVER ESP32 DEVICES ON NETWORK ============
+// Only checks default ESP32 hotspot IP (192.168.4.1) for fast connection.
 export async function discoverEsp32Devices(): Promise<Esp32Device[]> {
   const discoveredDevices: Esp32Device[] = [];
-  
+
   try {
-    // Get device's local IP (we'll scan common subnets)
-    const commonSubnets = [
-      '192.168.1',   // Most common home router
-      '192.168.0',   // Alternative home router
-      '192.168.4',   // ESP32 hotspot
-      '192.168.43',  // Mobile hotspot
-      '10.0.0',      // Some routers
-    ];
+    console.log('Checking default ESP32 IP:', DEFAULT_ESP32_IP);
 
-    console.log('Starting ESP32 device discovery...');
-
-    // Scan each subnet
-    for (const subnet of commonSubnets) {
-      const promises: Promise<void>[] = [];
-      
-      // Scan IPs 1-254 in parallel (but limit concurrent requests)
-      for (let i = 1; i <= 254; i++) {
-        const ip = `${subnet}.${i}`;
-        
-        // Limit concurrent requests to avoid overwhelming
-        if (promises.length >= 20) {
-          await Promise.race(promises);
-          promises.splice(0, promises.length);
-        }
-        
-        const promise = checkEsp32Device(ip).then(device => {
-          if (device) {
-            discoveredDevices.push(device);
-          }
-        });
-        
-        promises.push(promise);
-      }
-      
-      // Wait for remaining promises
-      await Promise.all(promises);
+    const device = await checkEsp32Device(DEFAULT_ESP32_IP);
+    if (device) {
+      discoveredDevices.push(device);
+      await saveDiscoveredDevices(discoveredDevices);
     }
 
     console.log(`Discovery complete. Found ${discoveredDevices.length} ESP32 device(s)`);
-    
-    // Save discovered devices
-    if (discoveredDevices.length > 0) {
-      await saveDiscoveredDevices(discoveredDevices);
-    }
-    
     return discoveredDevices;
   } catch (error) {
     console.log('Discovery error:', error);
