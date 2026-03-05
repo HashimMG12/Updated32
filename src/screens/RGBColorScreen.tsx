@@ -148,8 +148,6 @@ const RGBColorScreen: React.FC = () => {
     if (!manualOk) {
       return;
     }
-
-    setSelectedColor(color);
     
     // Send RGB color command to ESP32 using /setcolor endpoint
     // Note: /setcolor already turns on the LED if RGB > 0, so we don't call /on

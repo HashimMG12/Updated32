@@ -17,8 +17,8 @@ const BottomNavigation: React.FC<BottomNavigationProps> = ({
   const tabs: {key: TabType; label: string}[] = [
     {key: 'rgb', label: 'RGB'},
     {key: 'color', label: 'EFFECTS'},
-    {key: 'music', label: 'MUSIC'},
-    {key: 'camera', label: 'CAMERA'},
+    {key: 'music', label: 'MIC'},
+    {key: 'camera', label: 'MUSIC'},
   ];
 
   return (

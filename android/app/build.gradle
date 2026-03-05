@@ -125,4 +125,8 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+
+    // Media3 ExoPlayer for music-file reactive lights (PCM analysis when Visualizer fails)
+    implementation("androidx.media3:media3-exoplayer:1.2.1")
+    implementation("androidx.media3:media3-common:1.2.1")
 }
