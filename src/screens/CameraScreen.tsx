@@ -5,8 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   Alert,
-  NativeModules,
-  NativeEventEmitter,
   Platform,
   PermissionsAndroid,
 } from 'react-native';
@@ -19,17 +17,13 @@ import {
   types,
   errorCodes,
 } from '@react-native-documents/picker';
+import {useMusicFilePlayer} from '../hooks/useMusicFilePlayer';
 
 declare const global: any;
 
 if (typeof global !== 'undefined' && typeof global.Buffer === 'undefined') {
   global.Buffer = Buffer;
 }
-
-const MusicFileModule =
-  Platform.OS === 'android'
-    ? (NativeModules as any).MusicFileModule
-    : null;
 
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const dgram = require('react-native-udp');
@@ -45,17 +39,12 @@ interface PickedFile {
 
 const CameraScreen: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [volumePercent, setVolumePercent] = useState(0);
   const [selectedFile, setSelectedFile] = useState<PickedFile | null>(null);
 
   const socketRef = useRef<any | null>(null);
   const socketReadyRef = useRef<boolean>(false);
   const lastSendTimeRef = useRef<number>(0);
   const isMountedRef = useRef<boolean>(false);
-  const volumeSubscriptionRef = useRef<{remove: () => void} | null>(null);
-  const completeSubscriptionRef = useRef<{remove: () => void} | null>(null);
-  const errorSubscriptionRef = useRef<{remove: () => void} | null>(null);
   const lastBeatTimeRef = useRef<number>(0);
   const lastVolumeRef = useRef<number>(0);
   const lastColorCategoryRef = useRef<string | null>(null);
@@ -149,6 +138,66 @@ const CameraScreen: React.FC = () => {
     }
   };
 
+  const {
+    isAvailable: isMusicFilePlayerAvailable,
+    startPlayback: startMusicPlayback,
+    stopPlayback: stopMusicPlayback,
+    volume: volumePercent,
+    isPlaying,
+    setIsPlaying,
+  } = useMusicFilePlayer({
+    onVolume: (level) => {
+      if (!isMountedRef.current) return;
+      sendUdpCommand(`VOLUME:${level}`);
+      let category: string | null = null;
+      let colorCommand: string | null = null;
+      if (level >= 85) {
+        category = 'bass';
+        sendUdpCommand('BASS');
+      } else if (level >= 70) {
+        category = 'full';
+        colorCommand = 'RGB:200,150,100';
+      } else if (level >= 55) {
+        category = 'mid';
+        colorCommand = 'COLOR:32CD32';
+      } else if (level >= 40) {
+        category = 'treble';
+        colorCommand = 'COLOR:8A2BE2';
+      } else {
+        category = 'quiet';
+      }
+      if (
+        category &&
+        category !== lastColorCategoryRef.current &&
+        colorCommand
+      ) {
+        sendUdpCommand(colorCommand, true);
+        lastColorCategoryRef.current = category;
+      } else if (!colorCommand) {
+        lastColorCategoryRef.current = category;
+      }
+      const now = Date.now();
+      const lastVolume = lastVolumeRef.current;
+      const risingFast = level - lastVolume > 25;
+      const loudEnough = level > 40;
+      const beatCooldownOk = now - lastBeatTimeRef.current > 200;
+      if (risingFast && loudEnough && beatCooldownOk) {
+        sendUdpCommand('BEAT');
+        lastBeatTimeRef.current = now;
+      }
+      lastVolumeRef.current = level;
+    },
+    onComplete: () => {
+      if (!isMountedRef.current) return;
+      sendUdpCommand('VOLUME:10');
+    },
+    onError: (message: string) => {
+      if (!isMountedRef.current) return;
+      sendUdpCommand('VOLUME:10');
+      Alert.alert('Playback error', message ?? 'Failed to play audio file');
+    },
+  });
+
   const handlePickFile = async () => {
     try {
       const [res] = await pick({
@@ -169,22 +218,13 @@ const CameraScreen: React.FC = () => {
     }
   };
 
-  const removeEventSubscriptions = () => {
-    volumeSubscriptionRef.current?.remove();
-    volumeSubscriptionRef.current = null;
-    completeSubscriptionRef.current?.remove();
-    completeSubscriptionRef.current = null;
-    errorSubscriptionRef.current?.remove();
-    errorSubscriptionRef.current = null;
-  };
-
   const startPlaybackInternal = async () => {
     if (!selectedFile) {
       Alert.alert('Select file', 'Please pick a music file first.');
       return;
     }
 
-    if (Platform.OS !== 'android' || !MusicFileModule) {
+    if (!isMusicFilePlayerAvailable) {
       Alert.alert('Error', 'Music file playback is only available on Android.');
       return;
     }
@@ -217,97 +257,8 @@ const CameraScreen: React.FC = () => {
     try {
       sendUdpCommand('MODE:MANUAL', true);
       sendUdpCommand('COLOR:00FFAA', true);
-
-      removeEventSubscriptions();
-      const emitter = new NativeEventEmitter(MusicFileModule);
-
-      volumeSubscriptionRef.current = emitter.addListener(
-        'MusicFileVolume',
-        (level: number) => {
-          if (!isMountedRef.current) {
-            return;
-          }
-
-          const volume = Math.max(0, Math.min(100, Math.round(level)));
-          setVolumePercent(volume);
-          sendUdpCommand(`VOLUME:${volume}`);
-
-          // Match mic screen behaviour: color-reactive bands + BEAT pulses
-          let category: string | null = null;
-          let colorCommand: string | null = null;
-
-          if (volume >= 85) {
-            // Loud hit – bass flash
-            category = 'bass';
-            colorCommand = null;
-            sendUdpCommand('BASS');
-          } else if (volume >= 70) {
-            // Full chorus – warm white / gold
-            category = 'full';
-            colorCommand = 'RGB:200,150,100';
-          } else if (volume >= 55) {
-            // Strong mid – guitar solo (green)
-            category = 'mid';
-            colorCommand = 'COLOR:32CD32';
-          } else if (volume >= 40) {
-            // Strong treble – vocals (purple)
-            category = 'treble';
-            colorCommand = 'COLOR:8A2BE2';
-          } else {
-            category = 'quiet';
-            colorCommand = null;
-          }
-
-          if (
-            category &&
-            category !== lastColorCategoryRef.current &&
-            colorCommand
-          ) {
-            // Force send color even if we just sent a VOLUME command
-            sendUdpCommand(colorCommand, true);
-            lastColorCategoryRef.current = category;
-          } else if (!colorCommand) {
-            lastColorCategoryRef.current = category;
-          }
-
-          // Beat detection: sharp rising edge + cooldown (copied from mic mode)
-          const now = Date.now();
-          const lastVolume = lastVolumeRef.current;
-          const risingFast = volume - lastVolume > 25;
-          const loudEnough = volume > 40;
-          const beatCooldownOk = now - lastBeatTimeRef.current > 200;
-
-          if (risingFast && loudEnough && beatCooldownOk) {
-            sendUdpCommand('BEAT');
-            lastBeatTimeRef.current = now;
-          }
-
-          lastVolumeRef.current = volume;
-        },
-      );
-
-      completeSubscriptionRef.current = emitter.addListener(
-        'MusicFileComplete',
-        () => {
-          if (!isMountedRef.current) return;
-          removeEventSubscriptions();
-          stopPlaybackInternal();
-          setIsPlaying(false);
-        },
-      );
-
-      errorSubscriptionRef.current = emitter.addListener(
-        'MusicFileError',
-        (message: string) => {
-          if (!isMountedRef.current) return;
-          removeEventSubscriptions();
-          stopPlaybackInternal();
-          setIsPlaying(false);
-          Alert.alert('Playback error', message ?? 'Failed to play audio file');
-        },
-      );
-
-      MusicFileModule.startPlayback(selectedFile.uri);
+      startMusicPlayback(selectedFile.uri);
+      setIsPlaying(true);
     } catch (error) {
       console.log('startPlaybackInternal error', error);
       Alert.alert('Error', 'Failed to start playback');
@@ -316,12 +267,8 @@ const CameraScreen: React.FC = () => {
 
   const stopPlaybackInternal = () => {
     try {
-      removeEventSubscriptions();
-      if (Platform.OS === 'android' && MusicFileModule) {
-        MusicFileModule.stopPlayback();
-      }
+      stopMusicPlayback();
       sendUdpCommand('VOLUME:10');
-      setVolumePercent(0);
     } catch (error) {
       console.log('stopPlaybackInternal error', error);
     }
