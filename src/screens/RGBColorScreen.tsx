@@ -10,7 +10,7 @@ import {
   getStatus,
   sendColorByHex,
   setMode,
-} from '../HttpService';
+} from '../MqttService';
 
 const RGBColorScreen: React.FC = () => {
   const [selectedColor, setSelectedColor] = useState('#3498db'); // Blue as default

@@ -1,145 +1,263 @@
-// import mqtt, {MqttClient} from 'mqtt';
+/**
+ * MQTT service – matches ESP32 firmware topics and payloads.
+ * App connects via native MQTT over TCP using sp-react-native-mqtt.
+ *
+ * IMPORTANT:
+ * - ESP32 uses TCP MQTT on 182.191.116.32:1994.
+ * - The app now also uses TCP MQTT (NOT WebSockets), so no ws:// port is needed.
+ *
+ * Make sure port 1994 on 182.191.116.32 is reachable from the phone
+ * (same way it already works for the ESP32 and mosquitto_pub).
+ */
 
+import MQTT, {IMqttClient} from 'sp-react-native-mqtt';
 
-// const MQTT_CONFIG = {
-//   // Using websocket URL - adjust port if broker uses different ws port
-//   url: 'ws://182.191.116.32:1994',
-//   deviceId: 'esp32-CC04E3498CD4',
-// };
+// ============ CONFIG (match broker; use TCP MQTT URL for app) ============
+const MQTT_CONFIG = {
+  // Native TCP MQTT URI – same as ESP32/mosquitto_pub
+  uri: 'mqtt://182.191.116.32:1994',
+  username: '',
+  password: '',
+};
 
-// // ============ TOPICS ============
-// const TOPICS = {
-//   commands: `devices/${MQTT_CONFIG.deviceId}/commands`,
-//   ledState: `devices/${MQTT_CONFIG.deviceId}/state/led`,
-//   status: `devices/${MQTT_CONFIG.deviceId}/status`,
-// };
+// Topics – must match ESP32 firmware exactly
+const TOPICS = {
+  color: 'esp32/rgb/color',
+  mode: 'esp32/rgb/mode',
+  brightness: 'esp32/rgb/brightness',
+  command: 'esp32/rgb/command',
+  beat: 'esp32/rgb/beat',
+  status: 'esp32/rgb/status',
+  availability: 'esp32/rgb/available',
+};
 
-// // ============ STATE ============
-// let client: MqttClient | null = null;
-// let isConnected = false;
-// let onLedStateCallback: ((state: boolean) => void) | null = null;
-// let onConnectionCallback: ((connected: boolean) => void) | null = null;
-// let onDeviceStatusCallback: ((online: boolean) => void) | null = null;
+export type EspMode =
+  | 'manual'
+  | 'disco'
+  | 'rock'
+  | 'heartbeat'
+  | 'techno'
+  | 'waltz'
+  | 'reggae'
+  | 'police'
+  | 'rainbow'
+  | 'strobe'
+  | 'fire'
+  | 'christmas'
+  | 'party'
+  | 'fade'
+  | 'pulse'
+  | 'colorcycle'
+  | 'random';
 
-// // ============ CONNECT ============
-// export function connectMqtt(): void {
-//   console.log('Connecting to MQTT...');
-//   console.log('URL:', MQTT_CONFIG.url);
+export interface Esp32Status {
+  state?: string;
+  mode?: string;
+  mode_id?: number;
+  red?: number;
+  green?: number;
+  blue?: number;
+  brightness?: number;
+  rssi?: number;
+  ip?: string;
+}
 
-//   try {
-//     client = mqtt.connect(MQTT_CONFIG.url, {
-//       clientId: `app_${Math.random().toString(16).substr(2, 8)}`,
-//       reconnectPeriod: 5000,
-//       connectTimeout: 10000,
-//     });
+// ============ STATE ============
+let client: IMqttClient | null = null;
+let isConnected = false;
+let lastStatus: Esp32Status | null = null;
+let lastStatusJson: string | null = null;
 
-//     client.on('connect', () => {
-//       console.log('MQTT Connected!');
-//       isConnected = true;
-//       onConnectionCallback?.(true);
+type ConnectionCallback = (connected: boolean) => void;
+type StatusCallback = (status: Esp32Status) => void;
+type AvailabilityCallback = (online: boolean) => void;
 
-//       // Subscribe to topics
-//       client?.subscribe([TOPICS.ledState, TOPICS.status], (err) => {
-//         if (err) {
-//           console.log('Subscribe error:', err);
-//         } else {
-//           console.log('Subscribed to topics');
-//         }
-//       });
-//     });
+let onConnectionCallback: ConnectionCallback | null = null;
+let onStatusCallback: StatusCallback | null = null;
+let onAvailabilityCallback: AvailabilityCallback | null = null;
 
-//     client.on('message', (topic: string, payload: Buffer) => {
-//       const message = payload.toString();
-//       console.log(`Received: ${topic} = ${message}`);
+// ============ CONNECT ============
+export function connectMqtt(): void {
+  if (client) {
+    // Already created (auto-reconnect handled by native client)
+    return;
+  }
 
-//       if (topic === TOPICS.ledState) {
-//         const isOn = message.toUpperCase() === 'ON';
-//         onLedStateCallback?.(isOn);
-//       }
+  try {
+    MQTT.createClient({
+      uri: MQTT_CONFIG.uri,
+      clientId: `app_${Math.random().toString(16).slice(2, 10)}`,
+      user: MQTT_CONFIG.username || undefined,
+      pass: MQTT_CONFIG.password || undefined,
+      clean: true,
+      keepalive: 60,
+      auth: !!MQTT_CONFIG.username,
+      automaticReconnect: true,
+    }).then(createdClient => {
+      client = createdClient;
 
-//       if (topic === TOPICS.status) {
-//         const isOnline = message.toUpperCase() === 'ONLINE';
-//         onDeviceStatusCallback?.(isOnline);
-//       }
-//     });
+      client?.on('connect', () => {
+        isConnected = true;
+        onConnectionCallback?.(true);
 
-//     client.on('error', (err) => {
-//       console.log('MQTT Error:', err.message);
-//       isConnected = false;
-//       onConnectionCallback?.(false);
-//     });
+        client?.subscribe(TOPICS.status, 0);
+        client?.subscribe(TOPICS.availability, 0);
+      });
 
-//     client.on('close', () => {
-//       console.log('MQTT Connection closed');
-//       isConnected = false;
-//       onConnectionCallback?.(false);
-//     });
+      client?.on('message', msg => {
+        const topic = msg.topic;
+        const message = msg.data;
 
-//     client.on('offline', () => {
-//       console.log('MQTT Offline');
-//       isConnected = false;
-//       onConnectionCallback?.(false);
-//     });
+        if (topic === TOPICS.status) {
+          try {
+            const status = JSON.parse(message) as Esp32Status;
+            lastStatus = status;
+            lastStatusJson = message;
+            onStatusCallback?.(status);
+          } catch {
+            lastStatusJson = message;
+          }
+        }
 
-//   } catch (error) {
-//     console.log('MQTT Connect error:', error);
-//     isConnected = false;
-//     onConnectionCallback?.(false);
-//   }
-// }
+        if (topic === TOPICS.availability) {
+          const online = message.toLowerCase() === 'online';
+          onAvailabilityCallback?.(online);
+        }
+      });
 
-// // ============ DISCONNECT ============
-// export function disconnectMqtt(): void {
-//   if (client) {
-//     client.end();
-//     client = null;
-//     isConnected = false;
-//     onConnectionCallback?.(false);
-//   }
-// }
+      client?.on('error', error => {
+        console.warn('MQTT error:', error);
+        isConnected = false;
+        onConnectionCallback?.(false);
+      });
 
-// // ============ SEND COMMANDS ============
-// export function sendOn(): void {
-//   publishCommand('ON');
-// }
+      client?.on('closed', () => {
+        isConnected = false;
+        onConnectionCallback?.(false);
+      });
 
-// export function sendOff(): void {
-//   publishCommand('OFF');
-// }
+      client?.connect();
+    }).catch(error => {
+      console.warn('MQTT createClient error:', error);
+      isConnected = false;
+      onConnectionCallback?.(false);
+    });
+  } catch (error) {
+    console.warn('MQTT connect error:', error);
+    isConnected = false;
+    onConnectionCallback?.(false);
+  }
+}
 
-// export function sendToggle(): void {
-//   publishCommand('TOGGLE');
-// }
+// ============ DISCONNECT ============
+export function disconnectMqtt(): void {
+  if (client) {
+    client.disconnect();
+    client = null;
+  }
+  isConnected = false;
+  onConnectionCallback?.(false);
+}
 
-// function publishCommand(command: string): void {
-//   if (!client || !isConnected) {
-//     console.log('MQTT not connected, cannot send:', command);
-//     return;
-//   }
+// ============ PUBLISH HELPERS ============
+function publish(topic: string, payload: string): boolean {
+  if (!client || !isConnected) {
+    return false;
+  }
+  try {
+    client.publish(topic, payload, 0, false);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-//   client.publish(TOPICS.commands, command, (err) => {
-//     if (err) {
-//       console.log('Publish error:', err);
-//     } else {
-//       console.log(`Sent: ${command}`);
-//     }
-//   });
-// }
+// ============ COMMANDS (match ESP32 handlers) – return Promise for HttpService compatibility ============
+export function sendOn(): Promise<boolean> {
+  return Promise.resolve(publish(TOPICS.command, 'on'));
+}
 
-// // ============ LISTENERS ============
-// export function onLedStateChange(callback: (state: boolean) => void): void {
-//   onLedStateCallback = callback;
-// }
+export function sendOff(): Promise<boolean> {
+  return Promise.resolve(publish(TOPICS.command, 'off'));
+}
 
-// export function onConnectionChange(callback: (connected: boolean) => void): void {
-//   onConnectionCallback = callback;
-// }
+export function sendCommand(cmd: string): boolean {
+  return publish(TOPICS.command, cmd.trim().toLowerCase());
+}
 
-// export function onDeviceStatus(callback: (online: boolean) => void): void {
-//   onDeviceStatusCallback = callback;
-// }
+/** Send color: hex #RRGGBB → payload RRGGBB (no comma). */
+export function sendColorByHex(hex: string): Promise<boolean> {
+  const clean = hex.replace('#', '');
+  if (clean.length === 6) {
+    return Promise.resolve(publish(TOPICS.color, clean));
+  }
+  if (clean.length === 3) {
+    const r = clean[0] + clean[0];
+    const g = clean[1] + clean[1];
+    const b = clean[2] + clean[2];
+    return Promise.resolve(publish(TOPICS.color, r + g + b));
+  }
+  return Promise.resolve(publish(TOPICS.color, 'FFFFFF'));
+}
 
-// // ============ GETTERS ============
-// export function isMqttConnected(): boolean {
-//   return isConnected;
-// }
+/** Send color as R,G,B (ESP32 accepts this). */
+export function sendColorRGB(r: number, g: number, b: number): boolean {
+  const payload = `${Math.round(r)},${Math.round(g)},${Math.round(b)}`;
+  return publish(TOPICS.color, payload);
+}
+
+export function setMode(mode: EspMode): Promise<boolean> {
+  return Promise.resolve(publish(TOPICS.mode, mode));
+}
+
+export function setBrightness(value: number): boolean {
+  const clamped = Math.max(0, Math.min(255, Math.round(value)));
+  return publish(TOPICS.brightness, String(clamped));
+}
+
+export function setBrightnessPercent(percent: number): boolean {
+  const value = Math.round((percent / 100) * 255);
+  return setBrightness(value);
+}
+
+export function sendBeat(): boolean {
+  return publish(TOPICS.beat, '1');
+}
+
+// ============ STATUS (from subscription; no request/response) ============
+export function getLastStatus(): Esp32Status | null {
+  return lastStatus;
+}
+
+/** Last status as JSON string (for compatibility with getStatus()). */
+export function getStatusJson(): string | null {
+  return lastStatusJson;
+}
+
+/** Async check for use in screens – matches HttpService.checkConnection(). */
+export function checkConnection(): Promise<boolean> {
+  return Promise.resolve(isMqttConnected());
+}
+
+/** Async get last status JSON – matches HttpService.getStatus(). */
+export function getStatus(): Promise<string | null> {
+  return Promise.resolve(getStatusJson());
+}
+
+// ============ CALLBACKS ============
+export function onConnectionChange(cb: ConnectionCallback): void {
+  onConnectionCallback = cb;
+}
+
+export function onStatusChange(cb: StatusCallback): void {
+  onStatusCallback = cb;
+}
+
+export function onAvailabilityChange(cb: AvailabilityCallback): void {
+  onAvailabilityCallback = cb;
+}
+
+// ============ GETTERS ============
+export function isMqttConnected(): boolean {
+  return isConnected;
+}

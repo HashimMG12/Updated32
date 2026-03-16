@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {rw, rh} from '../utils/responsive';
-import {checkConnection, getStatus, setMode} from '../HttpService';
+import {checkConnection, getStatus, setMode} from '../MqttService';
 
 const Effects: React.FC = () => {
   const [activeMode, setActiveMode] = useState<string | null>(null);

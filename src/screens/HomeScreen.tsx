@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useEffect} from 'react';
 import {View, StyleSheet} from 'react-native';
 import BottomNavigation, {TabType} from '../components/BottomNavigation';
 import Header from '../components/Header';
@@ -6,9 +6,14 @@ import RGBColorScreen from './RGBColorScreen';
 import Effects from './Effects';
 import MusicScreen from './MusicScreen';
 import CameraScreen from './CameraScreen';
+import {connectMqtt} from '../MqttService';
 
 const HomeScreen: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('rgb');
+
+  useEffect(() => {
+    connectMqtt();
+  }, []);
 
   const renderScreen = () => {
     switch (activeTab) {

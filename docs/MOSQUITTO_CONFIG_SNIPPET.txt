@@ -1,0 +1,18 @@
+# ============================================================
+# Add this to your mosquitto.conf (e.g. at the end)
+# Replace or remove the existing lines: listener 1994 / listener 9001 / protocol websockets
+# ============================================================
+
+# TCP MQTT – for ESP32 (port 1994)
+listener 1994
+protocol mqtt
+listener_allow_anonymous true
+
+# WebSocket MQTT – for React Native app (port 9001)
+listener 9001
+protocol websockets
+listener_allow_anonymous true
+
+# ============================================================
+# Then restart Mosquitto (e.g. Services → Mosquitto → Restart, or: net stop mosquitto && net start mosquitto)
+# ============================================================

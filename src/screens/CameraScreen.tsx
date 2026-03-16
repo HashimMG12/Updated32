@@ -1,17 +1,14 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  Platform,
-  PermissionsAndroid,
-} from 'react-native';
+import {View, Text, StyleSheet, TouchableOpacity, Alert, Platform, PermissionsAndroid} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
-import {Buffer} from 'buffer';
 import {rw, rh} from '../utils/responsive';
-import {checkConnection, getEsp32IpAddress} from '../HttpService';
+import {
+  checkConnection,
+  setMode,
+  setBrightnessPercent,
+  sendBeat,
+  sendColorByHex,
+} from '../MqttService';
 import {
   pick,
   types,
@@ -19,16 +16,6 @@ import {
 } from '@react-native-documents/picker';
 import {useMusicFilePlayer} from '../hooks/useMusicFilePlayer';
 
-declare const global: any;
-
-if (typeof global !== 'undefined' && typeof global.Buffer === 'undefined') {
-  global.Buffer = Buffer;
-}
-
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const dgram = require('react-native-udp');
-
-const UDP_PORT = 8888;
 const MAX_COMMANDS_PER_SECOND = 25;
 const MIN_COMMAND_INTERVAL_MS = 1000 / MAX_COMMANDS_PER_SECOND; // ~40 ms
 
@@ -41,13 +28,11 @@ const CameraScreen: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [selectedFile, setSelectedFile] = useState<PickedFile | null>(null);
 
-  const socketRef = useRef<any | null>(null);
-  const socketReadyRef = useRef<boolean>(false);
   const lastSendTimeRef = useRef<number>(0);
   const isMountedRef = useRef<boolean>(false);
   const lastBeatTimeRef = useRef<number>(0);
   const lastVolumeRef = useRef<number>(0);
-  const lastColorCategoryRef = useRef<string | null>(null);
+  const lastColorHexRef = useRef<string | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -61,14 +46,6 @@ const CameraScreen: React.FC = () => {
       isMountedRef.current = false;
       clearInterval(interval);
       stopPlaybackInternal();
-      if (socketRef.current) {
-        try {
-          socketRef.current.close();
-        } catch {
-          // ignore
-        }
-        socketRef.current = null;
-      }
     };
   }, []);
 
@@ -84,60 +61,6 @@ const CameraScreen: React.FC = () => {
     }
   };
 
-  const ensureSocket = () => {
-    if (socketRef.current) {
-      return socketRef.current;
-    }
-    const socket = dgram.createSocket('udp4');
-    socketReadyRef.current = false;
-    try {
-      socket.bind(0);
-      socket.once('listening', () => {
-        console.log('UDP socket listening (music file mode)');
-        socketReadyRef.current = true;
-      });
-      socket.on('error', (err: any) => {
-        console.log('UDP socket error', err);
-      });
-    } catch (err) {
-      console.log('UDP bind error', err);
-    }
-    socketRef.current = socket;
-    return socket;
-  };
-
-  const sendUdpCommand = (command: string, force: boolean = false) => {
-    try {
-      const now = Date.now();
-      if (!force && now - lastSendTimeRef.current < MIN_COMMAND_INTERVAL_MS) {
-        return;
-      }
-      lastSendTimeRef.current = now;
-
-      const ip = getEsp32IpAddress();
-      const socket = ensureSocket();
-      if (!socketReadyRef.current) {
-        // Socket not ready yet; skip this frame
-        return;
-      }
-      const message = Buffer.from(command, 'utf8');
-
-      console.log('UDP_FILE_DEBUG', {
-        command,
-        ip,
-        UDP_PORT,
-      });
-
-      socket.send(message, 0, message.length, UDP_PORT, ip, (err: any) => {
-        if (err) {
-          console.log('UDP send error', err);
-        }
-      });
-    } catch (error) {
-      console.log('sendUdpCommand error', error);
-    }
-  };
-
   const {
     isAvailable: isMusicFilePlayerAvailable,
     startPlayback: startMusicPlayback,
@@ -148,52 +71,57 @@ const CameraScreen: React.FC = () => {
   } = useMusicFilePlayer({
     onVolume: (level) => {
       if (!isMountedRef.current) return;
-      sendUdpCommand(`VOLUME:${level}`);
-      let category: string | null = null;
-      let colorCommand: string | null = null;
-      if (level >= 85) {
-        category = 'bass';
-        sendUdpCommand('BASS');
-      } else if (level >= 70) {
-        category = 'full';
-        colorCommand = 'RGB:200,150,100';
-      } else if (level >= 55) {
-        category = 'mid';
-        colorCommand = 'COLOR:32CD32';
-      } else if (level >= 40) {
-        category = 'treble';
-        colorCommand = 'COLOR:8A2BE2';
-      } else {
-        category = 'quiet';
-      }
-      if (
-        category &&
-        category !== lastColorCategoryRef.current &&
-        colorCommand
-      ) {
-        sendUdpCommand(colorCommand, true);
-        lastColorCategoryRef.current = category;
-      } else if (!colorCommand) {
-        lastColorCategoryRef.current = category;
-      }
       const now = Date.now();
+      if (now - lastSendTimeRef.current < MIN_COMMAND_INTERVAL_MS) {
+        return;
+      }
+      lastSendTimeRef.current = now;
+
+      // level 0-100 -> brightness percent over MQTT
+      setBrightnessPercent(level);
+      let colorHex: string | null = null;
+
+      // Pick from small palettes so we see more than two colors
+      const loudPalette = ['#FFFFFF', '#FFD700', '#FFA500']; // white / gold / orange
+      const midPalette = ['#32CD32', '#00CED1', '#1E90FF']; // green / cyan / blue
+      const quietPalette = ['#8A2BE2', '#FF69B4', '#FF1493']; // purples / pinks
+
+      const pickFrom = (palette: string[]) =>
+        palette[Math.floor(level) % palette.length];
+
+      if (level >= 85) {
+        sendBeat();
+        colorHex = pickFrom(loudPalette);
+      } else if (level >= 70) {
+        colorHex = pickFrom(loudPalette);
+      } else if (level >= 55) {
+        colorHex = pickFrom(midPalette);
+      } else if (level >= 40) {
+        colorHex = pickFrom(quietPalette);
+      }
+
+      if (colorHex && colorHex !== lastColorHexRef.current) {
+        sendColorByHex(colorHex);
+        lastColorHexRef.current = colorHex;
+      }
+      const currentTime = Date.now();
       const lastVolume = lastVolumeRef.current;
       const risingFast = level - lastVolume > 25;
       const loudEnough = level > 40;
-      const beatCooldownOk = now - lastBeatTimeRef.current > 200;
+      const beatCooldownOk = currentTime - lastBeatTimeRef.current > 200;
       if (risingFast && loudEnough && beatCooldownOk) {
-        sendUdpCommand('BEAT');
-        lastBeatTimeRef.current = now;
+        sendBeat();
+        lastBeatTimeRef.current = currentTime;
       }
       lastVolumeRef.current = level;
     },
     onComplete: () => {
       if (!isMountedRef.current) return;
-      sendUdpCommand('VOLUME:10');
+      setBrightnessPercent(10);
     },
     onError: (message: string) => {
       if (!isMountedRef.current) return;
-      sendUdpCommand('VOLUME:10');
+      setBrightnessPercent(10);
       Alert.alert('Playback error', message ?? 'Failed to play audio file');
     },
   });
@@ -255,8 +183,8 @@ const CameraScreen: React.FC = () => {
     }
 
     try {
-      sendUdpCommand('MODE:MANUAL', true);
-      sendUdpCommand('COLOR:00FFAA', true);
+      setMode('manual');
+      sendColorByHex('#00FFAA');
       startMusicPlayback(selectedFile.uri);
       setIsPlaying(true);
     } catch (error) {
@@ -268,7 +196,7 @@ const CameraScreen: React.FC = () => {
   const stopPlaybackInternal = () => {
     try {
       stopMusicPlayback();
-      sendUdpCommand('VOLUME:10');
+      setBrightnessPercent(10);
     } catch (error) {
       console.log('stopPlaybackInternal error', error);
     }

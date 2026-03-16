@@ -6486,6 +6486,11 @@ source-map@^0.6.0, source-map@^0.6.1:
   resolved "https://registry.yarnpkg.com/source-map/-/source-map-0.6.1.tgz#74722af32e9614e9c287a8d0bbde48b5e2f1a263"
   integrity sha512-UjgapumWlbMhkBgzT7Ykc5YXUT46F0iKu8SGXq0bcwP5dz/h0Plj6enJqjz1Zbq2l5WaqYnrVbwWOWMyF3F47g==
 
+sp-react-native-mqtt@^0.6.1:
+  version "0.6.1"
+  resolved "https://registry.yarnpkg.com/sp-react-native-mqtt/-/sp-react-native-mqtt-0.6.1.tgz#4b5027bac53c6f70f98da4e77b389cecb513e17d"
+  integrity sha512-n6qgYu38pCyFEaWTE0K7/iXkzgiIxX+bdixZ3x+28XCNAdhereyXXaj/UTNA4j5WF45fBxCDMcnnjt25Nzl8LA==
+
 split2@^4.2.0:
   version "4.2.0"
   resolved "https://registry.yarnpkg.com/split2/-/split2-4.2.0.tgz#c9c5920904d148bab0b9f67145f245a86aadbfa4"
