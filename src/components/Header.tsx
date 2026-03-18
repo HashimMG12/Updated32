@@ -1,10 +1,17 @@
 import React, {useState, useEffect} from 'react';
-import {View, Text, StyleSheet, Image, TouchableOpacity, Alert} from 'react-native';
+import {View, Text, StyleSheet, Image, TouchableOpacity} from 'react-native';
 import {SafeAreaView} from 'react-native-safe-area-context';
 import {rw, rh} from '../utils/responsive';
 import wifiIcon from '../assets/wifi.png';
 import buttonIcon from '../assets/Button.png';
-import {sendOn, sendOff, checkConnection, getStatus} from '../HttpService';
+import {
+  connectMqtt,
+  disconnectMqtt,
+  checkConnection,
+  onConnectionChange,
+  onAvailabilityChange,
+  isMqttConnected,
+} from '../MqttService';
 
 interface HeaderProps {
   title: string;
@@ -21,24 +28,23 @@ const Header: React.FC<HeaderProps> = ({
   rightIcon = buttonIcon,
   onRightIconPress,
 }) => {
-  const [isOn, setIsOn] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
 
   useEffect(() => {
-    checkConnectionStatus();
-  }, []);
+    // Initial check based on MQTT + availability
+    checkConnection().then(value => setIsConnected(value));
 
-  const checkConnectionStatus = async () => {
-    const connected = await checkConnection();
-    setIsConnected(connected);
-    
-    if (connected) {
-      const status = await getStatus();
-      if (status) {
-        setIsOn(status.toUpperCase().includes('ON'));
-      }
-    }
-  };
+    // React to MQTT connection changes
+    onConnectionChange(connected => {
+      // Only mark connected if broker is connected and ESP has reported online
+      setIsConnected(connected && isMqttConnected());
+    });
+
+    // React to ESP availability changes
+    onAvailabilityChange(online => {
+      setIsConnected(isMqttConnected() && online);
+    });
+  }, []);
 
   const handleRightButtonPress = async () => {
     if (onRightIconPress) {
@@ -46,22 +52,13 @@ const Header: React.FC<HeaderProps> = ({
       return;
     }
 
-    if (!isConnected) {
-      Alert.alert('Error', 'Not connected to ESP32');
-      return;
-    }
-
-    let success: boolean;
-    if (isOn) {
-      success = await sendOff();
-      if (success) setIsOn(false);
+    // Toggle MQTT/ESP connectivity instead of LED power
+    if (isConnected) {
+      disconnectMqtt();
+      setIsConnected(false);
     } else {
-      success = await sendOn();
-      if (success) setIsOn(true);
-    }
-
-    if (!success) {
-      Alert.alert('Error', 'Failed to send command');
+      connectMqtt();
+      // Actual connection result will be reflected via callbacks
     }
   };
 
@@ -93,7 +90,7 @@ const Header: React.FC<HeaderProps> = ({
               source={rightIcon}
               style={[
                 styles.rightIcon,
-                isOn && styles.rightIconActive,
+                isConnected && styles.rightIconActive,
               ]}
               resizeMode="contain"
             />

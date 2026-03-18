@@ -18,6 +18,7 @@ declare const global: any;
 const SoundLevel = require('react-native-sound-level');
 
 const MIN_BRIGHTNESS_PERCENT = 12; // keep LEDs dimly on even when volume is 0
+const MIN_SEND_INTERVAL_MS = 80; // rate-limit MQTT to ~12 msgs/s so release builds don't flood ESP
 
 const MusicScreen: React.FC = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -31,6 +32,7 @@ const MusicScreen: React.FC = () => {
   const isMountedRef = useRef<boolean>(false);
   const lastColorCategoryRef = useRef<string | null>(null);
   const colorReactiveRef = useRef<boolean>(false);
+  const lastSendTimeRef = useRef<number>(0);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -88,43 +90,42 @@ const MusicScreen: React.FC = () => {
     const volume = Math.round(normalized * 100);
     setVolumePercent(volume);
 
-    // Map volume 0-100 to brightness, but never below MIN_BRIGHTNESS_PERCENT
-    const brightnessPercent = Math.max(MIN_BRIGHTNESS_PERCENT, volume);
-    setBrightnessPercent(brightnessPercent);
+    // Rate-limit MQTT sends so release builds don't flood the ESP
+    const now = Date.now();
+    if (now - lastSendTimeRef.current < MIN_SEND_INTERVAL_MS) {
+      lastVolumeRef.current = volume;
+      return;
+    }
+    lastSendTimeRef.current = now;
 
-    // Optional: color reacts to volume bands when enabled
+    // Determine color FIRST (before brightness) so ESP processes both
     if (colorReactiveRef.current) {
       let category: string | null = null;
       let colorCommand: string | null = null;
 
       if (volume >= 85) {
-        // Loud bass / full hit: keep current color, add bass flash
         category = 'bass';
-        colorCommand = null; // color unchanged, bass handled below
-        sendBeat();
+        colorCommand = null;
       } else if (volume >= 70) {
-        // Full chorus – warm white / gold
         category = 'full';
         colorCommand = '#C89664';
       } else if (volume >= 55) {
-        // Strong mid – guitar solo (green)
         category = 'mid';
         colorCommand = '#32CD32';
       } else if (volume >= 40) {
-        // Strong treble – vocals (purple)
         category = 'treble';
         colorCommand = '#8A2BE2';
       } else {
         category = 'quiet';
-        colorCommand = null; // keep current color for quiet parts
+        colorCommand = null;
       }
 
+      // Send color BEFORE brightness so ESP applies color first
       if (
         category &&
         category !== lastColorCategoryRef.current &&
         colorCommand
       ) {
-        // Force send color change
         sendColorByHex(colorCommand);
         lastColorCategoryRef.current = category;
       } else if (!colorCommand) {
@@ -132,8 +133,11 @@ const MusicScreen: React.FC = () => {
       }
     }
 
-    // Very simple beat detection: sharp rising edge + cooldown
-    const now = Date.now();
+    // Now send brightness
+    const brightnessPercent = Math.max(MIN_BRIGHTNESS_PERCENT, volume);
+    setBrightnessPercent(brightnessPercent);
+
+    // Beat detection: sharp rising edge + cooldown
     const lastVolume = lastVolumeRef.current;
     const risingFast = volume - lastVolume > 25;
     const loudEnough = volume > 40;
@@ -142,6 +146,10 @@ const MusicScreen: React.FC = () => {
     if (risingFast && loudEnough && beatCooldownOk) {
       sendBeat();
       lastBeatTimeRef.current = now;
+    }
+
+    if (volume >= 85) {
+      sendBeat();
     }
 
     lastVolumeRef.current = volume;

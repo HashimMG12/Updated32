@@ -79,10 +79,11 @@ let onAvailabilityCallback: AvailabilityCallback | null = null;
 // ============ CONNECT ============
 export function connectMqtt(): void {
   if (client) {
-    // Already created (auto-reconnect handled by native client)
+    console.log('[MQTT] client already created, skipping');
     return;
   }
 
+  console.log('[MQTT] creating client →', MQTT_CONFIG.uri);
   try {
     MQTT.createClient({
       uri: MQTT_CONFIG.uri,
@@ -94,9 +95,11 @@ export function connectMqtt(): void {
       auth: !!MQTT_CONFIG.username,
       automaticReconnect: true,
     }).then(createdClient => {
+      console.log('[MQTT] client created OK');
       client = createdClient;
 
       client?.on('connect', () => {
+        console.log('[MQTT] CONNECTED to broker');
         isConnected = true;
         onConnectionCallback?.(true);
 
@@ -126,24 +129,25 @@ export function connectMqtt(): void {
       });
 
       client?.on('error', error => {
-        console.warn('MQTT error:', error);
+        console.warn('[MQTT] ERROR:', error);
         isConnected = false;
         onConnectionCallback?.(false);
       });
 
       client?.on('closed', () => {
+        console.warn('[MQTT] CLOSED');
         isConnected = false;
         onConnectionCallback?.(false);
       });
 
       client?.connect();
     }).catch(error => {
-      console.warn('MQTT createClient error:', error);
+      console.warn('[MQTT] createClient FAILED:', error);
       isConnected = false;
       onConnectionCallback?.(false);
     });
   } catch (error) {
-    console.warn('MQTT connect error:', error);
+    console.warn('[MQTT] connect exception:', error);
     isConnected = false;
     onConnectionCallback?.(false);
   }
@@ -162,12 +166,15 @@ export function disconnectMqtt(): void {
 // ============ PUBLISH HELPERS ============
 function publish(topic: string, payload: string): boolean {
   if (!client || !isConnected) {
+    console.warn(`[MQTT] publish SKIPPED (client=${!!client}, connected=${isConnected}) → ${topic}: ${payload}`);
     return false;
   }
   try {
     client.publish(topic, payload, 0, false);
+    console.log(`[MQTT] publish OK → ${topic}: ${payload}`);
     return true;
-  } catch {
+  } catch (e) {
+    console.warn(`[MQTT] publish FAILED → ${topic}: ${payload}`, e);
     return false;
   }
 }

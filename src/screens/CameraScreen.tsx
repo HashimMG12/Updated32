@@ -89,18 +89,30 @@ const CameraScreen: React.FC = () => {
       const pickFrom = (palette: string[]) =>
         palette[Math.floor(level) % palette.length];
 
+      let paletteName = 'none';
       if (level >= 85) {
         sendBeat();
         colorHex = pickFrom(loudPalette);
+        paletteName = 'loud';
       } else if (level >= 70) {
         colorHex = pickFrom(loudPalette);
+        paletteName = 'loud';
       } else if (level >= 55) {
         colorHex = pickFrom(midPalette);
+        paletteName = 'mid';
       } else if (level >= 40) {
         colorHex = pickFrom(quietPalette);
+        paletteName = 'quiet';
       }
 
+      console.log(
+        `[MusicFile] level=${level.toFixed(1)}% | palette=${paletteName} | color=${colorHex ?? 'none'} | prevColor=${lastColorHexRef.current ?? 'none'}`,
+      );
+
       if (colorHex && colorHex !== lastColorHexRef.current) {
+        console.log(
+          `[MusicFile] COLOR CHANGE: ${lastColorHexRef.current ?? 'none'} -> ${colorHex}`,
+        );
         sendColorByHex(colorHex);
         lastColorHexRef.current = colorHex;
       }
@@ -110,6 +122,9 @@ const CameraScreen: React.FC = () => {
       const loudEnough = level > 40;
       const beatCooldownOk = currentTime - lastBeatTimeRef.current > 200;
       if (risingFast && loudEnough && beatCooldownOk) {
+        console.log(
+          `[MusicFile] BEAT detected: rise=${(level - lastVolume).toFixed(1)} | level=${level.toFixed(1)}`,
+        );
         sendBeat();
         lastBeatTimeRef.current = currentTime;
       }
